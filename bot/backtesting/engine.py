@@ -121,6 +121,7 @@ class BacktestEngine:
             fee_bps=self.config.execution.fee_bps,
             slippage_bps=self.config.execution.slippage_bps,
             config_hash=self.loaded.config_hash,
+            spot_only=self.config.risk.spot_only,
         )
         risk.ledger.mark_equity(balance)
 

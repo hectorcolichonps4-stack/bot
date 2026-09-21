@@ -16,13 +16,22 @@ exchange:
 
 data:
   cache_dir: var/cache
-  timeframe: 15m
+  timeframe: 1h
   warmup_bars: 400
   max_bars_per_request: 1000
+  # Diez pares liquidos de spot, sin memecoins. Todos cotizan en Binance
+  # desde antes de 2021-01-01, que es el inicio del periodo de estudio.
   symbols:
     - BTCUSDT
     - ETHUSDT
     - SOLUSDT
+    - BNBUSDT
+    - XRPUSDT
+    - ADAUSDT
+    - AVAXUSDT
+    - LINKUSDT
+    - DOTUSDT
+    - LTCUSDT
 
 indicators:
   ema_fast: 20
@@ -43,7 +52,7 @@ indicators:
 gates:
   enabled: true
   require_trend_alignment: true
-  allow_short: false
+  allow_short: false          # incompatible con risk.spot_only
   min_relative_volume: 1.2
   rsi_long_max: 72.0
   rsi_short_min: 28.0
@@ -66,6 +75,10 @@ scoring:
     volatility: 10.0
 
 risk:
+  # Candado de seguridad: solo largos en spot, sin margen ni apalancamiento.
+  # Ponerlo en false no habilita nada por si solo: el bot no implementa
+  # futuros ni margen, solo deja de impedir que se configuren cortos.
+  spot_only: true
   risk_per_trade_pct: 0.75
   max_position_pct: 20.0
   max_concurrent_positions: 3
@@ -96,15 +109,19 @@ execution:
   live_confirmation: ""
 
 backtesting:
-  start: 2023-01-01
-  end: 2024-12-31
+  start: 2021-01-01
+  end: 2026-09-21
   initial_balance: 10000.0
   benchmark_symbol: BTCUSDT
+  # Meses finales reservados: no se evaluan salvo que se pidan explicitamente.
+  holdout_months: 12
+  # resume_next_day | halt | both
+  kill_switch_policy: both
   walk_forward:
     enabled: true
-    train_days: 90
-    test_days: 30
-    step_days: 30
+    train_days: 180
+    test_days: 90
+    step_days: 90
   monte_carlo:
     enabled: true
     iterations: 1000

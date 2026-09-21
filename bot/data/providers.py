@@ -88,7 +88,17 @@ class BinanceRestProvider(MarketDataProvider):
                 if exc.code not in (418, 429, 500, 502, 503, 504):
                     raise DataError(f"binance {exc.code} en {path}: {exc.read()[:200]!r}") from exc
                 last_error = exc
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            except urllib.error.URLError as exc:
+                if _is_policy_denial(exc):
+                    # Un proxy corporativo que deniega el destino no va a
+                    # cambiar de idea: reintentar solo alarga el fallo.
+                    raise DataError(
+                        f"acceso a {self.base_url} denegado por la politica de red del entorno "
+                        f"({exc.reason}). No es un fallo del bot: hay que permitir el host "
+                        f"o alimentar las velas desde CSV con --csv-dir."
+                    ) from exc
+                last_error = exc
+            except (TimeoutError, json.JSONDecodeError) as exc:
                 last_error = exc
             self._sleep(2.0 ** attempt)
         raise DataError(f"binance no responde tras {self.max_retries} intentos en {path}: {last_error}")
@@ -257,6 +267,14 @@ def _slice(
     if limit and len(out) > limit and start is None:
         out = out.iloc[-limit:]
     return out.reset_index(drop=True)
+
+
+_POLICY_MARKERS = ("tunnel connection failed", "403", "407", "proxy")
+
+
+def _is_policy_denial(exc: urllib.error.URLError) -> bool:
+    """Distingue "la red va mal" de "este destino esta prohibido"."""
+    return any(marker in str(exc.reason).lower() for marker in _POLICY_MARKERS)
 
 
 def _as_utc(value: pd.Timestamp | str) -> pd.Timestamp:

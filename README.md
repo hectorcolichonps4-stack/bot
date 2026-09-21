@@ -9,6 +9,26 @@ implementacion de `Broker` que se inyecta; las reglas no se duplican.
 > por defecto, apunta a la testnet. Usa `backtest` y `paper` durante el
 > tiempo suficiente antes de plantearte otra cosa.
 
+## Candado de spot: solo largos, sin apalancamiento
+
+`risk.spot_only: true` (el valor por defecto) no es una preferencia, es un
+invariante que se comprueba en cuatro sitios:
+
+| Capa | Que impide |
+| --- | --- |
+| `Config` | `gates.allow_short: true` es un error de validacion; tampoco se admite `max_position_pct` ni `max_exposure_pct` por encima del 100% |
+| `StrategyEngine.sides()` | Solo evalua `Side.LONG`, asi que nunca se genera una senal corta |
+| `SimulatedBroker.open_position` | Rechaza `Side.SHORT` en backtest y en paper |
+| `BinanceBroker.open_position` | Rechaza `Side.SHORT` y solo usa endpoints `/api/v3/*` de spot |
+
+Ademas, el efectivo no puede ponerse en negativo (una orden que no cabe se
+rechaza) y no hay una sola referencia a `/fapi`, `/dapi`, margen, `leverage`
+ni `sideEffectType` en el codigo. `tests/test_safety.py` lo verifica, incluido
+un test que escanea el arbol de fuentes buscando esos endpoints.
+
+Desactivar `spot_only` no habilita cortos: solo deja de impedir que se
+configuren. El bot no implementa futuros ni margen.
+
 ## Estructura
 
 | Modulo | Responsabilidad |
@@ -23,7 +43,7 @@ implementacion de `Broker` que se inyecta; las reglas no se duplican.
 | `bot/logging` | SQLite: trades, senales, rechazos, errores, estado |
 | `bot/dashboard` | Streamlit, solo lectura sobre la base de datos |
 | `tests` | Pruebas unitarias, sobre todo de `risk` e `indicators` |
-| `main.py` | Orquestador: `backtest` \| `paper` \| `live` |
+| `main.py` | Orquestador: `download` \| `backtest` \| `paper` \| `live` |
 
 Todo cuelga de un unico paquete `bot/` a proposito: un directorio `logging/`
 en la raiz del repositorio ensombreceria al `logging` de la libreria estandar
@@ -39,6 +59,12 @@ cp .env.example .env     # solo si vas a usar paper/live contra el exchange
 ## Uso
 
 ```bash
+# 1) Descargar el historico una sola vez (lo lento y lo que depende de la red)
+python main.py download
+
+# 2) Backtest sobre lo ya cacheado, sin volver a tocar el exchange
+python main.py backtest --no-cache-refresh --walk-forward --monte-carlo
+
 # Backtest con datos sinteticos, sin tocar la red
 python main.py backtest --offline --symbols BTCUSDT,ETHUSDT
 
@@ -59,7 +85,15 @@ python -m pytest
 ```
 
 Argumentos utiles: `--config`, `--symbols`, `--timeframe`, `--balance`,
-`--start`, `--end`, `--offline`, `--no-cache-refresh`, `--iterations`, `--db`.
+`--start`, `--end`, `--offline`, `--csv-dir`, `--no-cache-refresh`,
+`--kill-switch`, `--holdout-months`, `--iterations`, `--db`.
+
+### Si no hay acceso al exchange
+
+`--csv-dir DIR` lee las velas de `DIR/<SIMBOLO>_<timeframe>.csv` con las
+columnas de `bot/data/schema.py` (`open_time`, `open`, `high`, `low`, `close`,
+`volume`, `close_time`, `quote_volume`, `trades`). Es la via para trabajar con
+datos descargados en otra maquina o con un historico auditado.
 
 ## Como se toma una decision
 
@@ -115,9 +149,22 @@ SELECT config_hash, COUNT(*), SUM(pnl) FROM trades GROUP BY config_hash;
 - **El redondeo de cantidades siempre trunca.** Redondear al alza dejaria la
   posicion por encima del riesgo autorizado.
 - **El kill switch no se rearma solo.** En vivo hace falta intervencion
-  humana. En backtest, `BacktestEngine(on_kill_switch=...)` permite elegir
-  entre `resume_next_day` (por defecto, simula que un operador lo revisa y
-  reanuda) y `halt` (corta la corrida para ver donde habria obligado a parar).
+  humana. En backtest, `backtesting.kill_switch_policy` (o `--kill-switch`)
+  elige entre `resume_next_day` (reanuda al dia siguiente, como haria un
+  operador al revisar la sesion), `halt` (estricto: detiene la corrida hasta
+  revision manual) y `both`, el valor por defecto, que ejecuta los dos y los
+  compara. Los dos numeros dicen cosas distintas: `halt` dice cuando la
+  estrategia habria obligado a parar, `resume_next_day` dice como habria ido
+  el periodo completo pagando el coste de esas paradas.
+- **Holdout.** `backtesting.holdout_months` (12 por defecto) reserva los
+  ultimos meses del historico y los excluye de todo: backtest, walk-forward y
+  referencias. Un holdout solo vale mientras no se mira; el informe dice sus
+  fechas pero no lo evalua.
+- **Las referencias pagan lo mismo.** Comprar y mantener, el cruce de EMAs y
+  el filtro RSI/MACD se calculan con las mismas comisiones, el mismo
+  deslizamiento y el mismo retardo de una vela entre senal y ejecucion. Sin
+  ese retardo la referencia compraria al precio que genero su propia senal y
+  saldria injustamente favorecida.
 - **El walk-forward reporta su eficiencia.** Rendimiento fuera de muestra
   dividido entre el de entrenamiento; por debajo de ~0.5 la estrategia esta
   sobreajustada.

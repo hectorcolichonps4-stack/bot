@@ -41,6 +41,7 @@ class SimulatedBroker(Broker):
         fee_bps: float = 7.5,
         slippage_bps: float = 4.0,
         config_hash: str = "",
+        spot_only: bool = True,
     ) -> None:
         if initial_balance <= 0:
             raise ValueError("el saldo inicial debe ser positivo")
@@ -49,6 +50,7 @@ class SimulatedBroker(Broker):
         self.fee_rate = fee_bps / 10_000.0
         self.slippage_rate = slippage_bps / 10_000.0
         self.config_hash = config_hash
+        self.spot_only = spot_only
 
         self._positions: Dict[str, Position] = {}
         self._filters: Dict[str, SymbolFilters] = {}
@@ -129,6 +131,13 @@ class SimulatedBroker(Broker):
         metadata: Mapping[str, object] | None = None,
     ) -> Position:
         symbol = symbol.upper()
+        if self.spot_only and side is Side.SHORT:
+            # El simulador imita spot: sin margen no se puede vender lo que no
+            # se tiene, y un backtest que lo permitiera daria resultados que el
+            # broker real jamas podria reproducir.
+            raise ExecutionError(
+                f"{symbol}: cortos bloqueados por risk.spot_only; el spot no permite vender en descubierto"
+            )
         if symbol in self._positions:
             raise ExecutionError(f"ya hay una posicion abierta en {symbol}")
 

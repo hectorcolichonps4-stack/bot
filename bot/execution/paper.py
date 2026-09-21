@@ -36,12 +36,14 @@ class PaperBroker(SimulatedBroker):
         config_hash: str = "",
         db: Database | None = None,
         run_id: int | None = None,
+        spot_only: bool = True,
     ) -> None:
         super().__init__(
             initial_balance=initial_balance,
             fee_bps=fee_bps,
             slippage_bps=slippage_bps,
             config_hash=config_hash,
+            spot_only=spot_only,
         )
         self.feed = feed
         self.db = db

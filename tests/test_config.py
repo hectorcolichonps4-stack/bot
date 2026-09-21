@@ -114,3 +114,17 @@ def test_un_yaml_invalido_da_error_de_configuracion(tmp_path):
     ruta.write_text("data: [esto\n  no: cierra\n", encoding="utf-8")
     with pytest.raises(ConfigError):
         load_config(ruta)
+
+
+def test_la_politica_de_kill_switch_se_valida():
+    with pytest.raises(ValidationError):
+        Config.model_validate({"backtesting": {"kill_switch_policy": "ignorar"}})
+
+
+def test_la_politica_por_defecto_compara_ambos_escenarios():
+    assert Config().backtesting.kill_switch_policy == "both"
+
+
+def test_el_holdout_no_admite_valores_negativos():
+    with pytest.raises(ValidationError):
+        Config.model_validate({"backtesting": {"holdout_months": -1}})

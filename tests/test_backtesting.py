@@ -246,3 +246,18 @@ def test_los_trades_persistidos_llevan_el_stop_real(loaded, frames, tmp_path):
     assert (guardados["stop_loss"] != guardados["entry_price"]).all()
     assert (guardados["stop_loss"] < guardados["take_profit"]).all()
     db.close()
+
+
+def test_la_politica_both_ejecuta_los_dos_escenarios(loaded, frames):
+    """El informe tiene que poder comparar reanudar contra detenerse."""
+
+    resume = BacktestEngine(loaded, on_kill_switch="resume_next_day").run(frames, initial_balance=10_000.0)
+    halt = BacktestEngine(loaded, on_kill_switch="halt").run(frames, initial_balance=10_000.0)
+    assert halt.metrics.trades <= resume.metrics.trades
+    if halt.halted_reason:
+        assert halt.end <= resume.end
+
+
+def test_el_escenario_estricto_no_rearma_el_freno(loaded, frames):
+    resultado = BacktestEngine(loaded, on_kill_switch="halt").run(frames, initial_balance=10_000.0)
+    assert len(resultado.kill_switch_events) <= 1

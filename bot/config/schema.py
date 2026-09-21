@@ -133,6 +133,15 @@ class KillSwitchConfig(Base):
 
 
 class RiskConfig(Base):
+    spot_only: bool = True
+    """Candado de seguridad: solo largos, sin margen y sin apalancamiento.
+
+    Con este valor en ``true`` (el de por defecto) la configuracion rechaza
+    ``gates.allow_short`` y los brokers simulados se niegan a abrir cortos, de
+    modo que operar en corto no depende de acordarse de dejar una bandera
+    apagada: hay que desactivar el candado a proposito.
+    """
+
     risk_per_trade_pct: float = Field(0.75, gt=0, le=10)
     max_position_pct: float = Field(20.0, gt=0, le=100)
     max_concurrent_positions: int = Field(3, ge=1)
@@ -152,6 +161,10 @@ class RiskConfig(Base):
     def _coherent(self) -> "RiskConfig":
         if self.max_daily_loss_pct > self.max_weekly_loss_pct:
             raise ValueError("risk.max_daily_loss_pct no puede superar max_weekly_loss_pct")
+        if self.spot_only and self.max_position_pct > 100.0:
+            raise ValueError("risk.max_position_pct > 100% implicaria apalancamiento")
+        if self.spot_only and self.max_exposure_pct > 100.0:
+            raise ValueError("risk.max_exposure_pct > 100% implicaria apalancamiento")
         return self
 
 
@@ -179,11 +192,21 @@ class MonteCarloConfig(Base):
     seed: int = 7
 
 
+KillSwitchPolicy = Literal["resume_next_day", "halt", "both"]
+
+
 class BacktestConfig(Base):
     start: Optional[date] = None
     end: Optional[date] = None
     initial_balance: float = Field(10_000.0, gt=0)
     benchmark_symbol: str = "BTCUSDT"
+    holdout_months: int = Field(0, ge=0, le=60)
+    """Meses finales reservados como holdout: no se evaluan hasta pedirlo."""
+
+    kill_switch_policy: KillSwitchPolicy = "both"
+    """``halt`` detiene la corrida hasta revision manual, ``resume_next_day``
+    reanuda al dia siguiente y ``both`` ejecuta y compara los dos escenarios."""
+
     walk_forward: WalkForwardConfig = WalkForwardConfig()
     monte_carlo: MonteCarloConfig = MonteCarloConfig()
 
@@ -213,6 +236,17 @@ class Config(Base):
     execution: ExecutionConfig = ExecutionConfig()
     backtesting: BacktestConfig = BacktestConfig()
     logging: LoggingConfig = LoggingConfig()
+
+    @model_validator(mode="after")
+    def _spot_only_forbids_shorts(self) -> "Config":
+        """El candado de spot no se puede contradecir desde otra seccion."""
+        if self.risk.spot_only and self.gates.allow_short:
+            raise ValueError(
+                "gates.allow_short: true es incompatible con risk.spot_only: true. "
+                "El spot no permite vender lo que no se tiene; para operar en corto "
+                "harian falta futuros o margen, que este bot no implementa."
+            )
+        return self
 
     @model_validator(mode="after")
     def _warmup_covers_indicators(self) -> "Config":
