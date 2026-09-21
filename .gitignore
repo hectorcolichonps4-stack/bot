@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+
+# Datos y estado generados en ejecucion
+var/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.parquet
+
+# Credenciales: nunca deben entrar en el repositorio
+secrets.yaml
+settings.local.yaml
