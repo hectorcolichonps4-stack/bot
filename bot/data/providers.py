@@ -200,6 +200,8 @@ class SyntheticProvider(MarketDataProvider):
         start_price: float = 100.0,
         drift: float = 0.0002,
         volatility: float = 0.008,
+        annual_drift: float | None = None,
+        annual_volatility: float | None = None,
         bars: int = 2000,
         base_volume: float = 50_000.0,
         anchor: pd.Timestamp | None = None,
@@ -208,9 +210,30 @@ class SyntheticProvider(MarketDataProvider):
         self.start_price = start_price
         self.drift = drift
         self.volatility = volatility
+        self.annual_drift = annual_drift
+        self.annual_volatility = annual_volatility
         self.bars = bars
         self.base_volume = base_volume
         self.anchor = anchor or pd.Timestamp.now(tz="UTC").floor("min")
+
+    def _per_bar(self, step: pd.Timedelta) -> tuple[float, float]:
+        """Convierte drift y volatilidad anuales a la escala de una vela.
+
+        Sin esta conversion, un drift por vela razonable a 15m se vuelve
+        absurdo a 1h sobre cinco anos: compuesto sobre 50.000 velas convierte
+        un precio de 100 en varios millones, y cualquier comparacion contra
+        comprar y mantener deja de significar nada.
+        """
+        if self.annual_drift is None and self.annual_volatility is None:
+            return self.drift, self.volatility
+
+        bars_per_year = pd.Timedelta(days=365) / step
+        drift = (self.annual_drift if self.annual_drift is not None else 0.0) / bars_per_year
+        volatility = (
+            (self.annual_volatility if self.annual_volatility is not None else 0.5)
+            / np.sqrt(bars_per_year)
+        )
+        return float(drift), float(volatility)
 
     def fetch_klines(
         self,
@@ -226,9 +249,10 @@ class SyntheticProvider(MarketDataProvider):
         # La semilla depende del simbolo: cada par tiene su propia serie.
         rng = np.random.default_rng(self.seed + (abs(hash(symbol.upper())) % 10_000))
 
-        returns = rng.normal(self.drift, self.volatility, count)
+        drift, volatility = self._per_bar(step)
+        returns = rng.normal(drift, volatility, count)
         close = self.start_price * np.exp(np.cumsum(returns))
-        spread = np.abs(rng.normal(0, self.volatility / 2, count)) * close
+        spread = np.abs(rng.normal(0, volatility / 2, count)) * close
         open_ = np.concatenate([[self.start_price], close[:-1]])
         high = np.maximum(open_, close) + spread
         low = np.minimum(open_, close) - spread

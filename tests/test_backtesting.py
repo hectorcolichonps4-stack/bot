@@ -261,3 +261,24 @@ def test_la_politica_both_ejecuta_los_dos_escenarios(loaded, frames):
 def test_el_escenario_estricto_no_rearma_el_freno(loaded, frames):
     resultado = BacktestEngine(loaded, on_kill_switch="halt").run(frames, initial_balance=10_000.0)
     assert len(resultado.kill_switch_events) <= 1
+
+
+def test_un_tramo_corto_no_se_anualiza():
+    """Anualizar 16 dias da una cifra que el lector comparara con cinco anos."""
+    indice = pd.date_range("2024-01-01", periods=16, freq="1D", tz="UTC")
+    corto = compute_metrics(pd.Series(np.linspace(10_000.0, 9_800.0, 16), index=indice), [])
+    assert not corto.annualizable
+    assert "CAGR n/d" in corto.summary()
+
+    largo_idx = pd.date_range("2024-01-01", periods=400, freq="1D", tz="UTC")
+    largo = compute_metrics(pd.Series(np.linspace(10_000.0, 12_000.0, 400), index=largo_idx), [])
+    assert largo.annualizable and "CAGR +" in largo.summary()
+
+
+def test_la_tabla_comparativa_oculta_el_cagr_de_un_tramo_corto():
+    from bot.backtesting.reporting import comparison_table
+
+    indice = pd.date_range("2024-01-01", periods=16, freq="1D", tz="UTC")
+    corto = compute_metrics(pd.Series(np.linspace(10_000.0, 9_800.0, 16), index=indice), [])
+    tabla = comparison_table({"corto": (corto, 3)})
+    assert tabla.loc[0, "CAGR_%"] is None and tabla.loc[0, "dias"] == 15

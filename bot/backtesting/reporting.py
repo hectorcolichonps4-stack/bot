@@ -120,10 +120,12 @@ def comparison_table(entries: Mapping[str, tuple[Metrics, int]]) -> pd.DataFrame
         {
             "estrategia": name,
             "retorno_%": round(metrics.total_return_pct, 2),
-            "CAGR_%": round(metrics.cagr_pct, 2),
+            # Un tramo corto no se anualiza: ver **Metrics.annualizable**.
+            "CAGR_%": round(metrics.cagr_pct, 2) if metrics.annualizable else None,
             "maxDD_%": round(metrics.max_drawdown_pct, 2),
             "Sharpe": round(metrics.sharpe, 2),
-            "Calmar": round(metrics.calmar, 2),
+            "Calmar": round(metrics.calmar, 2) if metrics.annualizable else None,
+            "dias": round(metrics.days),
             "operaciones": trade_count,
             "acierto_%": round(metrics.win_rate_pct, 1),
             "PF": round(metrics.profit_factor, 2) if metrics.profit_factor != float("inf") else float("inf"),

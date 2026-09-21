@@ -12,6 +12,11 @@ from bot.risk.ledger import ClosedTrade
 
 PERIODS_PER_YEAR = 365.0
 
+# Anualizar un tramo corto produce cifras que no significan nada: una corrida
+# detenida a los 16 dias daria un "CAGR" de dos digitos que el lector
+# compararia con el de cinco anos. Por debajo de este umbral no se anualiza.
+MIN_DAYS_TO_ANNUALIZE = 180.0
+
 # Por debajo de esto la dispersion es ruido de coma flotante, no volatilidad:
 # la desviacion de una serie constante sale ~1e-19, no 0, y dividir por ella
 # produce ratios astronomicos sin ningun significado.
@@ -46,12 +51,18 @@ class Metrics:
     total_fees: float = 0.0
     days: float = 0.0
 
+    @property
+    def annualizable(self) -> bool:
+        """Si el periodo da para extrapolar a un ano sin decir tonterias."""
+        return self.days >= MIN_DAYS_TO_ANNUALIZE
+
     def as_dict(self) -> dict[str, float]:
         return asdict(self)
 
     def summary(self) -> str:
+        cagr = f"CAGR {self.cagr_pct:+.2f}%" if self.annualizable else f"CAGR n/d ({self.days:.0f} dias)"
         return (
-            f"retorno {self.total_return_pct:+.2f}% | CAGR {self.cagr_pct:+.2f}% | "
+            f"retorno {self.total_return_pct:+.2f}% | {cagr} | "
             f"maxDD {self.max_drawdown_pct:.2f}% | Sharpe {self.sharpe:.2f} | "
             f"{self.trades} trades | acierto {self.win_rate_pct:.1f}% | "
             f"PF {self.profit_factor:.2f} | esperanza {self.expectancy_r:+.2f}R"

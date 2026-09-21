@@ -23,12 +23,17 @@ class CorrelationCheck:
 
 
 def returns_from_closes(closes: pd.Series, lookback: int) -> pd.Series:
-    """Rendimientos logaritmicos de las ultimas ``lookback`` velas."""
+    """Rendimientos logaritmicos de las ultimas ``lookback`` velas.
+
+    El recorte va ANTES del logaritmo: calcularlo sobre todo el historico para
+    quedarse con la cola era el coste dominante de un backtest largo, porque
+    esta funcion se llama una vez por simbolo y por senal candidata.
+    """
     series = pd.to_numeric(closes, errors="coerce").dropna()
     if len(series) < 3:
         return pd.Series(dtype="float64")
-    log_returns = np.log(series / series.shift(1)).dropna()
-    return log_returns.iloc[-lookback:]
+    window = series.iloc[-(lookback + 1):]
+    return np.log(window / window.shift(1)).dropna()
 
 
 def pairwise_correlation(left: pd.Series, right: pd.Series) -> float:

@@ -285,9 +285,12 @@ class BacktestEngine:
             signal = decision.signal
             signals.append(signal)
 
-            # Solo las velas ya vistas entran en la correlacion.
+            # Solo las velas ya vistas entran en la correlacion, y solo las
+            # que la ventana necesita: copiar el historico entero por cada
+            # senal candidata escala fatal en periodos largos.
+            lookback = self.config.risk.correlation_lookback
             closes = {
-                other: features[other]["close"].iloc[: position + 1]
+                other: features[other]["close"].iloc[max(0, position - lookback): position + 1]
                 for other, position in here.items()
             }
             verdict = risk.evaluate(signal, account, filters=broker.filters(symbol), closes=closes)

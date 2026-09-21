@@ -148,7 +148,11 @@ def build_provider(
             span = pd.Timestamp(backtesting.end) - pd.Timestamp(backtesting.start)
             needed = int(span / step) + loaded.config.data.warmup_bars
             bars = max(1000, min(needed, 60_000))
-    return SyntheticProvider(bars=bars, seed=7, anchor=anchor)
+    # Drift y volatilidad anualizados para que la serie sea plausible sea cual
+    # sea el timeframe y la longitud del periodo.
+    return SyntheticProvider(
+        bars=bars, seed=7, anchor=anchor, annual_drift=0.25, annual_volatility=0.65
+    )
 
 
 # ----------------------------------------------------------------- modos
